@@ -47,7 +47,44 @@ module System.Console.ANSI.Windows.Foreign (
         ConsoleException(..)
     ) where
 
-import Foreign.C.Types
+{- Note [Win32-2.5.0.0 package and later]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+From version 2.5.0.0 of the Win32 package, its module "System.Win32.Types"
+exports type synonym 'SHORT'.
+-}
+
+{- Note [Win32-2.5.1.0 package and later]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+From version 2.5.1.0 of the Win32 package, functions 'withHandleToHANDLE' and
+'withStablePtr' were added to its module "System.Win32.Types". Their origin was
+this package.
+-}
+
+{- Note [GHC 6.12 and later]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The implementation of function 'withHandleToHANDLE' makes use of type 'FD',
+representing a file descriptor. Before GHC 6.12.1 and base-4.2.0.0
+(released December 2009), 'FD' was a synonym for type 'CInt' and exported by
+module "GHC.IOBase". From GHC 6.12.1, 'FD' is an algebraic data type exported by
+module "GHC.IO.FD", with an named first field 'fdFD' of type 'CInt'; and 'FD' is
+an instance of classes 'IODevice' and 'Typeable'.
+
+The implementation of 'withHandleToHANDLE' also makes use of types 'Handle' and
+'Handle__'. Before GHC 6.12.1, these types were exported by module "GHC.IOBase".
+From GHC 6.12.1, they are exported by module "GHC.IO.Handle.Types".
+
+Before GHC 6.12.1, algebraic data type 'Handle__' had a named field 'haFD' of
+type 'FD'. From GHC 6.12.1, 'Handle__' had a named first field 'haDevice' of a
+type that was an instance of classes 'IODevice' and 'Typeable'.
+
+The implementation of 'withHandleToHANDLE' also makes use of function 'bracket'
+from module "Control.Exception".
+-}
+
+import Foreign.C.Types (CInt (..), CShort (..), CWchar (..))
 import Foreign.Marshal
 import Foreign.Ptr
 import Foreign.Storable
@@ -56,14 +93,22 @@ import Data.Bits
 import Data.Char
 import Data.Typeable (Typeable, cast)
 
-import System.Win32.Types
+import System.Win32.Types (BOOL, DWORD, ErrCode, HANDLE, LPCTSTR, LPDWORD,
+    TCHAR, UINT, WORD, failIfFalse_, getLastError, iNVALID_HANDLE_VALUE,
+    nullHANDLE, withTString)
+-- Note [Win32-2.5.0.0 package and later]
+#if MIN_VERSION_Win32(2,5,0)
+import System.Win32.Types (SHORT)
+#endif
 
 import Control.Exception (Exception, throw)
 
+-- Note [Win32-2.5.1.0 package and later]
 #if !MIN_VERSION_Win32(2,5,1)
 import Control.Concurrent.MVar
 import Foreign.StablePtr
 import Control.Exception (bracket)
+-- Note [GHC 6.12 and later]
 #if __GLASGOW_HASKELL__ >= 612
 import GHC.IO.Handle.Types (Handle(..), Handle__(..))
 import GHC.IO.FD (FD(..)) -- A wrapper around an Int32
@@ -81,12 +126,11 @@ import qualified GHC.IOBase as IOBase (FD) -- Just an Int32
 # error Unknown mingw32 arch
 #endif
 
---import System.Console.ANSI.Windows.Foreign.Compat
+-- Note [Win32-2.5.0.0 package and later]
 #if !MIN_VERSION_Win32(2,5,0)
--- Some Windows types missing from System.Win32 prior version 2.5.0.0
 type SHORT = CShort
 #endif
-type WCHAR = CWchar
+type WCHAR = CWchar  -- Not provided by Win32 package, as of Win32-2.5.4.1
 
 charToWCHAR :: Char -> WCHAR
 charToWCHAR char = fromIntegral (ord char)
@@ -349,14 +393,13 @@ scrollConsoleScreenBuffer handle scroll_rectangle mb_clip_rectangle destination_
     with fill $ \ptr_fill ->
     throwIfFalse $ cScrollConsoleScreenBuffer handle ptr_scroll_rectangle ptr_clip_rectangle (unpackCOORD destination_origin) ptr_fill
 
-
+-- Note [Win32-2.5.1.0 package and later]
 #if !MIN_VERSION_Win32(2,5,1)
 -- | This bit is all highly dubious.  The problem is that we want to output ANSI to arbitrary Handles rather than forcing
 -- people to use stdout.  However, the Windows ANSI emulator needs a Windows HANDLE to work it's magic, so we need to be able
 -- to extract one of those from the Haskell Handle.
 --
 -- This code accomplishes this, albeit at the cost of only being compatible with GHC.
--- withHandleToHANDLE was added in Win32-2.5.1.0
 withHandleToHANDLE :: Handle -> (HANDLE -> IO a) -> IO a
 withHandleToHANDLE haskell_handle action =
     -- Create a stable pointer to the Handle. This prevents the garbage collector
@@ -367,13 +410,13 @@ withHandleToHANDLE haskell_handle action =
         let write_handle_mvar = case haskell_handle of
                 FileHandle _ handle_mvar     -> handle_mvar
                 DuplexHandle _ _ handle_mvar -> handle_mvar -- This is "write" MVar, we could also take the "read" one
-
+            write_handle = readMVar write_handle_mvar
         -- Get the FD from the algebraic data type
-#if __GLASGOW_HASKELL__ < 612
-        fd <- fmap haFD $ readMVar write_handle_mvar
+-- Note [GHC 6.12.1 and later]
+#if __GLASGOW_HASKELL__ >= 612
+        Just fd <- fmap (\(Handle__ { haDevice = dev }) -> fmap fdFD (cast dev)) write_handle
 #else
-        --readMVar write_handle_mvar >>= \(Handle__ { haDevice = dev }) -> print (typeOf dev)
-        Just fd <- fmap (\(Handle__ { haDevice = dev }) -> fmap fdFD (cast dev)) $ readMVar write_handle_mvar
+        fd <- fmap haFD write_handle
 #endif
 
         -- Finally, turn that (C-land) FD into a HANDLE using msvcrt
@@ -382,14 +425,16 @@ withHandleToHANDLE haskell_handle action =
         -- Do what the user originally wanted
         action windows_handle
 
--- This essential function comes from the C runtime system. It is certainly provided by msvcrt, and also seems to be provided by the mingw C library - hurrah!
+-- This essential function comes from the C runtime system. It is certainly
+-- provided by msvcrt, and also seems to be provided by the mingw C library -
+-- hurrah!
+-- Note [GHC 6.12.1 and later]
 #if __GLASGOW_HASKELL__ >= 612
 foreign import WINDOWS_CCONV unsafe "_get_osfhandle" cget_osfhandle :: CInt -> IO HANDLE
 #else
 foreign import WINDOWS_CCONV unsafe "_get_osfhandle" cget_osfhandle :: IOBase.FD -> IO HANDLE
 #endif
 
--- withStablePtr was added in Win32-2.5.1.0
 withStablePtr :: a -> (StablePtr a -> IO b) -> IO b
 withStablePtr value = bracket (newStablePtr value) freeStablePtr
 #endif
