@@ -1,0 +1,59 @@
+name:        ansi-terminal
+version:     0.8.0.2
+synopsis:    Simple ANSI terminal support, with Windows compatibility
+description: "ANSI terminal support for Haskell allows cursor movement,
+             screen clearing, color output, showing or hiding the
+             cursor, and changing the title. Works on UNIX and Windows."
+maintainer:  Mike Pilgrem <public@pilgrem.com>,
+             Roman Cheplyaka <roma@ro-che.info>
+author:      Max Bolingbroke
+license:     BSD3
+github:      feuerbach/ansi-terminal
+category:    User Interfaces
+
+flags:
+  example:
+    description: Build the example application
+    manual:      False
+    default:     False
+
+extra-source-files:
+  - src/includes/Common-Include.hs
+  - src/includes/Common-Include-Emulator.hs
+  - src/includes/Common-Include-Enabled.hs
+  - src/includes/Exports-Include.hs
+  - CHANGELOG.md
+  - README.md
+include-dirs: src/includes
+dependencies: base >= 4.2.0.0 && < 5
+ghc-options: -Wall
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - System.Console.ANSI
+    - System.Console.ANSI.Types
+    - System.Console.ANSI.Codes
+  dependencies: colour
+  when:
+    - condition: os(windows)
+      then:
+        dependencies:
+          - base-compat >= 0.9.1
+          - containers >= 0.5.0.0
+          - Win32 >= 2.0
+        cpp-options: -DWINDOWS
+      else:
+        cpp-options: -DUNIX
+  default-extensions:
+    - CPP
+    - ForeignFunctionInterface
+
+executables:
+  ansi-terminal-example:
+    source-dirs: app
+    main: Example.hs
+    dependencies: ansi-terminal
+    when:
+      - condition: "!flag(example)"
+        buildable: False
