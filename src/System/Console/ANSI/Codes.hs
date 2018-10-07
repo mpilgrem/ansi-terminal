@@ -3,16 +3,19 @@
 -- described in the documentation of module "System.Console.ANSI".
 --
 -- The module "System.Console.ANSI" exports functions with the same names as
--- those in this module. On some versions of Windows, the terminal in use may
--- not be ANSI-capable. When that is the case, the same-named functions exported
--- by module "System.Console.ANSI" return \"\", for the reasons set out in the
--- documentation of that module.
+-- those in this module. On versions of Windows before Windows 10, the terminal
+-- in use may not be ANSI-capable. When that is the case, the same-named
+-- functions exported by module "System.Console.ANSI" return \"\", for the
+-- reasons set out in the documentation of that module.
 --
 -- Consequently, if module "System.Console.ANSI" is also imported, this module
 -- is intended to be imported qualified, to avoid name clashes with those
 -- functions. For example:
 --
 -- > import qualified System.Console.ANSI.Codes as ANSI
+--
+-- This module also exports some utility functions, including functions that
+-- facilitate the direct use of \'ANSI\' codes on native Windows 10 terminals.
 --
 module System.Console.ANSI.Codes
   (
@@ -56,13 +59,21 @@ module System.Console.ANSI.Codes
 
     -- * Utilities
   , colorToCode, csi, sgrToCode
+  , withCurrentModes
+  , withVTProcessing
+
   ) where
 
+import Control.Exception (SomeException, bracket, try)
 import Data.List (intersperse)
-
+import Data.Bits ((.|.))
 import Data.Colour.SRGB (toSRGB24, RGB (..))
 
 import System.Console.ANSI.Types
+import System.Console.ANSI.Windows.Foreign (DWORD,
+  eNABLE_VIRTUAL_TERMINAL_INPUT, eNABLE_VIRTUAL_TERMINAL_PROCESSING,
+  getConsoleMode,  setConsoleMode, withHandleToHANDLE)
+import System.IO (stderr, stdin, stdout)
 
 -- | 'csi' @parameters controlFunction@, where @parameters@ is a list of 'Int',
 -- returns the control sequence comprising the control function CONTROL
@@ -181,3 +192,66 @@ showCursorCode = csi [] "?25h"
 setTitleCode :: String -- ^ New Icon Name and Window Title
              -> String
 setTitleCode title = "\ESC]0;" ++ filter (/= '\007') title ++ "\007"
+
+-- | On Unix-like operating systems, @withCurrentModes = id@.
+--
+-- On Windows, when @withCurrentModes action@ is performed, after @action@ is
+-- performed, if any of 'stdin', 'stdout' and 'stderr' are handles to a native
+-- Windows console, their console mode is restored.
+--
+-- @since 0.8.2
+withCurrentModes :: IO a -> IO a
+withCurrentModes action = bracket
+  getModes
+  setModes
+  (const action)
+ where
+  getModes = do
+    inMode <- getMode stdin
+    outMode <- getMode stdout
+    errMode <- getMode stderr
+    pure (inMode, outMode, errMode)
+  setModes (inMode, outMode, errMode) = do
+    setMode inMode stdin
+    setMode outMode stdout
+    setMode errMode stderr
+  getMode h = do
+    tryMode <- try (withHandleToHANDLE h getConsoleMode)
+      :: IO (Either SomeException DWORD)
+    case tryMode of
+      Left _  -> pure Nothing
+      Right mode -> pure $ Just mode
+  setMode Nothing _ = pure ()
+  setMode (Just mode) h = withHandleToHANDLE h (`setConsoleMode` mode)
+
+-- | On Unix-like operating systems, @withVTProcessing = id@.
+--
+-- On Windows, when @withVTProcessing action@ is performed, @action@ is
+-- performed after enabling virtual terminal (VT) processing by 'stdin',
+-- 'stdout' and 'stderr', if any of them is a handle to a native Windows 10
+-- console. The current modes of 'stdin', 'stdout' and 'stderr' are restored.
+-- For example:
+--
+-- > main = withVTProcessing $ do
+-- >   putStr $ setSGRCode [SetColor Foreground Dull Red]
+-- >   putStr "This is red!"
+-- >   putStrLn $ setSGRCode [Reset]
+--
+-- (Attempting to enable VT processing on versions of Windows before Windows 10
+-- has no effect.)
+--
+-- @since 0.8.2
+withVTProcessing :: IO a -> IO a
+withVTProcessing action = withCurrentModes $ do
+  enableVTProcessing
+  action
+ where
+  enableVTProcessing = do
+    setFlag stdin eNABLE_VIRTUAL_TERMINAL_INPUT
+    setFlag stdout eNABLE_VIRTUAL_TERMINAL_PROCESSING
+    setFlag stderr eNABLE_VIRTUAL_TERMINAL_PROCESSING
+  setFlag hnd flag = withHandleToHANDLE hnd $ \h -> do
+    tryMode <- try (getConsoleMode h) :: IO (Either SomeException DWORD)
+    case tryMode of
+      Left _     -> pure ()
+      Right mode -> setConsoleMode h (mode .|. flag)
