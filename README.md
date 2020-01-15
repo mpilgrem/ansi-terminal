@@ -2,7 +2,7 @@ ansi-terminal
 =============
 
 A Haskell package providing support for 'ANSI' control character sequences for
-terminals on Unix-like operating systems and Windows
+terminals on Unix-like operating systems and Windows 10
 
 Description
 -----------
@@ -17,10 +17,6 @@ support for Haskell, which allows:
 -   Reporting the position of the cursor
 -   Scrolling the screen up or down
 -   Changing the title of the terminal
-
-By using emulation, it is compatible with versions of 'Command Prompt' and
-'PowerShell' on Windows that did not recognise 'ANSI' escape codes before
-Windows 10 version 1511 was released in November 2015.
 
 If you like this, you may be interested in
 [ansi-wl-pprint](http://github.com/batterseapower/ansi-wl-pprint), which
@@ -53,8 +49,7 @@ function that comes in three variants:
 -   An `IO` variant similar to above, but which takes a `Handle` to which the
     escape code should be applied
 -   A `String` variant that returns a literal string that should be
-    included to get the effect of the code. However, on Windows systems where
-    emulation has been necessary, these strings will always be blank!
+    included to get the effect of the code
 
 Example
 -------
@@ -66,7 +61,7 @@ but for a taste of how the library works try the following code:
 ``` haskell
 import System.Console.ANSI
 
-main = do
+main = withANSI $ do
     setCursorPosition 5 0
     setTitle "ANSI Terminal Short Example"
 

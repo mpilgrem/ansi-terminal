@@ -28,7 +28,7 @@ examples = [ cursorMovementExample
            ]
 
 main :: IO ()
-main = mapM_ (\example -> resetScreen >> example) examples
+main = withANSI $ mapM_ (\example -> resetScreen >> example) examples
 
 -- Annex D to Standard ECMA-48 (5th Ed, 1991) identifies that the representation
 -- of an erased state is implementation-dependent. There may or may not be a

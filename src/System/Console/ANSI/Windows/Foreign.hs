@@ -9,66 +9,35 @@ the FFI myself.
 module System.Console.ANSI.Windows.Foreign
   (
     -- Re-exports from Win32.Types
-    BOOL, WORD, DWORD, WCHAR, HANDLE, iNVALID_HANDLE_VALUE, nullHANDLE, SHORT,
+    DWORD, HANDLE, iNVALID_HANDLE_VALUE, nullHANDLE
 
     -- 'Re-exports from System.Win32.Console.Extra'
-    INPUT_RECORD (..), INPUT_RECORD_EVENT (..), kEY_EVENT,
-    KEY_EVENT_RECORD (..), UNICODE_ASCII_CHAR (..), writeConsoleInput,
-    getNumberOfConsoleInputEvents, readConsoleInput,
+  , INPUT_RECORD (..), INPUT_RECORD_EVENT (..),
+    KEY_EVENT_RECORD (..), UNICODE_ASCII_CHAR (..),
+    getNumberOfConsoleInputEvents, readConsoleInput
 
-    charToWCHAR, cWcharsToChars,
-
-    COORD(..), SMALL_RECT(..), rect_top, rect_bottom, rect_left, rect_right,
-    rect_width, rect_height, CONSOLE_CURSOR_INFO(..),
-    CONSOLE_SCREEN_BUFFER_INFO(..), CHAR_INFO(..),
-
-    sTD_INPUT_HANDLE, sTD_OUTPUT_HANDLE, sTD_ERROR_HANDLE,
-
-    eNABLE_VIRTUAL_TERMINAL_INPUT, eNABLE_VIRTUAL_TERMINAL_PROCESSING,
-
-    fOREGROUND_BLUE, fOREGROUND_GREEN, fOREGROUND_RED, fOREGROUND_INTENSITY,
-    fOREGROUND_WHITE, fOREGROUND_INTENSE_WHITE,
-    bACKGROUND_BLUE, bACKGROUND_GREEN, bACKGROUND_RED, bACKGROUND_INTENSITY,
-    bACKGROUND_WHITE, bACKGROUND_INTENSE_WHITE,
-    cOMMON_LVB_REVERSE_VIDEO, cOMMON_LVB_UNDERSCORE,
-
-    getStdHandle,
-    getConsoleScreenBufferInfo,
-    getConsoleCursorInfo,
-    getConsoleMode,
-
-    setConsoleTextAttribute,
-    setConsoleCursorPosition,
-    setConsoleCursorInfo,
-    setConsoleTitle,
-    setConsoleMode,
-
-    fillConsoleOutputAttribute,
-    fillConsoleOutputCharacter,
-    scrollConsoleScreenBuffer,
-
-    withTString, withHandleToHANDLE,
-
-    ConsoleException (..)
+  , cWcharsToChars
+  , eNABLE_VIRTUAL_TERMINAL_PROCESSING
+  , getConsoleMode
+  , setConsoleMode
+  , withHandleToHANDLE
   ) where
 
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative ((<$>), (<*>))
 #endif
 import Control.Exception (Exception, throw)
-import Data.Bits ((.|.), shiftL)
-import Data.Char (chr, ord)
+import Data.Char (chr)
 import Data.Typeable (Typeable)
-import Foreign.C.Types (CInt (..), CWchar (..))
+import Foreign.C.Types (CWchar (..))
 import Foreign.Marshal.Alloc (alloca)
-import Foreign.Marshal.Array (allocaArray, peekArray, withArrayLen)
-import Foreign.Marshal.Utils (maybeWith, with)
+import Foreign.Marshal.Array (allocaArray, peekArray)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Foreign.Storable (Storable (..))
 -- `SHORT` and `withHandleToHANDLE` are not both available before Win32-2.5.1.0
-import System.Win32.Compat (BOOL, DWORD, ErrCode, HANDLE, LPCTSTR, LPDWORD,
-  SHORT, TCHAR, UINT, WORD, failIfFalse_, getLastError, iNVALID_HANDLE_VALUE,
-  nullHANDLE, withHandleToHANDLE, withTString)
+import System.Win32.Compat (BOOL, DWORD, ErrCode, HANDLE, LPDWORD, SHORT, UINT,
+  WORD, failIfFalse_, getLastError, iNVALID_HANDLE_VALUE, nullHANDLE,
+  withHandleToHANDLE)
 
 #if defined(i386_HOST_ARCH)
 #define WINDOWS_CCONV stdcall
@@ -79,23 +48,6 @@ import System.Win32.Compat (BOOL, DWORD, ErrCode, HANDLE, LPCTSTR, LPDWORD,
 #endif
 
 type WCHAR = CWchar
-
-charToWCHAR :: Char -> WCHAR
-charToWCHAR char = fromIntegral (ord char)
-
--- This is a FFI hack. Some of the API calls take a Coord, but that isn't a
--- built-in FFI type so I can't use it directly. Instead, I use UNPACKED_COORD
--- and marshal COORDs into this manually. Note that we CAN'T just use two SHORTs
--- directly because they get expanded to 4 bytes each instead of just boing 2
--- lots of 2 bytes by the stdcall convention, so linking fails.
-type UNPACKED_COORD = CInt
-
--- Field packing order determined experimentally: I couldn't immediately find a
--- specification for Windows struct layout anywhere.
-unpackCOORD :: COORD -> UNPACKED_COORD
-unpackCOORD (COORD x y)
-  = (fromIntegral y) `shiftL` (sizeOf x * 8) .|. (fromIntegral x)
-
 
 peekAndOffset :: Storable a => Ptr a -> IO (a, Ptr b)
 peekAndOffset ptr = do
@@ -132,16 +84,6 @@ data SMALL_RECT = SMALL_RECT
   { rect_top_left     :: COORD
   , rect_bottom_right :: COORD
   }
-
-rect_top, rect_left, rect_bottom, rect_right :: SMALL_RECT -> SHORT
-rect_top = coord_y . rect_top_left
-rect_left = coord_x . rect_top_left
-rect_bottom = coord_y . rect_bottom_right
-rect_right = coord_x . rect_bottom_right
-
-rect_width, rect_height :: SMALL_RECT -> SHORT
-rect_width rect = rect_right rect - rect_left rect + 1
-rect_height rect = rect_bottom rect - rect_top rect + 1
 
 instance Show SMALL_RECT where
   show (SMALL_RECT tl br) = show tl ++ "-" ++ show br
@@ -222,34 +164,8 @@ instance Storable CHAR_INFO where
     ptr' <- pokeAndOffset (castPtr ptr) char
     poke ptr' attributes
 
-eNABLE_VIRTUAL_TERMINAL_INPUT, eNABLE_VIRTUAL_TERMINAL_PROCESSING :: DWORD
-sTD_INPUT_HANDLE, sTD_OUTPUT_HANDLE, sTD_ERROR_HANDLE :: DWORD
-eNABLE_VIRTUAL_TERMINAL_INPUT      = 512
+eNABLE_VIRTUAL_TERMINAL_PROCESSING :: DWORD
 eNABLE_VIRTUAL_TERMINAL_PROCESSING =   4
-sTD_INPUT_HANDLE  = 0xFFFFFFF6 -- minus 10
-sTD_OUTPUT_HANDLE = 0xFFFFFFF5 -- minus 11
-sTD_ERROR_HANDLE  = 0xFFFFFFF4 -- minus 12
-
-fOREGROUND_BLUE, fOREGROUND_GREEN, fOREGROUND_RED, fOREGROUND_INTENSITY,
-  bACKGROUND_BLUE, bACKGROUND_GREEN, bACKGROUND_RED, bACKGROUND_INTENSITY,
-  cOMMON_LVB_REVERSE_VIDEO, cOMMON_LVB_UNDERSCORE :: WORD
-fOREGROUND_BLUE          =    0x1
-fOREGROUND_GREEN         =    0x2
-fOREGROUND_RED           =    0x4
-fOREGROUND_INTENSITY     =    0x8
-bACKGROUND_BLUE          =   0x10
-bACKGROUND_GREEN         =   0x20
-bACKGROUND_RED           =   0x40
-bACKGROUND_INTENSITY     =   0x80
-cOMMON_LVB_REVERSE_VIDEO = 0x4000
-cOMMON_LVB_UNDERSCORE    = 0x8000
-
-fOREGROUND_WHITE, bACKGROUND_WHITE, fOREGROUND_INTENSE_WHITE,
-  bACKGROUND_INTENSE_WHITE :: WORD
-fOREGROUND_WHITE = fOREGROUND_RED .|. fOREGROUND_GREEN .|. fOREGROUND_BLUE
-bACKGROUND_WHITE = bACKGROUND_RED .|. bACKGROUND_GREEN .|. bACKGROUND_BLUE
-fOREGROUND_INTENSE_WHITE = fOREGROUND_WHITE .|. fOREGROUND_INTENSITY
-bACKGROUND_INTENSE_WHITE = bACKGROUND_WHITE .|. bACKGROUND_INTENSITY
 
 kEY_EVENT, mOUSE_EVENT, wINDOW_BUFFER_SIZE_EVENT, mENU_EVENT,
   fOCUS_EVENT :: WORD
@@ -259,53 +175,10 @@ wINDOW_BUFFER_SIZE_EVENT =  4
 mENU_EVENT               =  8
 fOCUS_EVENT              = 16
 
-foreign import WINDOWS_CCONV unsafe "windows.h GetStdHandle"
-  getStdHandle :: DWORD -> IO HANDLE
-foreign import WINDOWS_CCONV unsafe "windows.h GetConsoleScreenBufferInfo"
-  cGetConsoleScreenBufferInfo :: HANDLE
-                              -> Ptr CONSOLE_SCREEN_BUFFER_INFO
-                              -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h GetConsoleCursorInfo"
-  cGetConsoleCursorInfo :: HANDLE -> Ptr CONSOLE_CURSOR_INFO -> IO BOOL
 foreign import WINDOWS_CCONV unsafe "windows.h GetConsoleMode"
   cGetConsoleMode :: HANDLE -> Ptr DWORD -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h SetConsoleTextAttribute"
-  cSetConsoleTextAttribute :: HANDLE -> WORD -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h SetConsoleCursorPosition"
-  cSetConsoleCursorPosition :: HANDLE -> UNPACKED_COORD -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h SetConsoleCursorInfo"
-  cSetConsoleCursorInfo :: HANDLE -> Ptr CONSOLE_CURSOR_INFO -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h SetConsoleTitleW"
-  cSetConsoleTitle :: LPCTSTR -> IO BOOL
 foreign import WINDOWS_CCONV unsafe "windows.h SetConsoleMode"
   cSetConsoleMode :: HANDLE -> DWORD -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h FillConsoleOutputAttribute"
-  cFillConsoleOutputAttribute :: HANDLE
-                              -> WORD
-                              -> DWORD
-                              -> UNPACKED_COORD
-                              -> Ptr DWORD
-                              -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h FillConsoleOutputCharacterW"
-  cFillConsoleOutputCharacter :: HANDLE
-                              -> TCHAR
-                              -> DWORD
-                              -> UNPACKED_COORD
-                              -> Ptr DWORD
-                              -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h ScrollConsoleScreenBufferW"
-  cScrollConsoleScreenBuffer :: HANDLE
-                             -> Ptr SMALL_RECT
-                             -> Ptr SMALL_RECT
-                             -> UNPACKED_COORD
-                             -> Ptr CHAR_INFO
-                             -> IO BOOL
-foreign import WINDOWS_CCONV unsafe "windows.h WriteConsoleInputW"
-  cWriteConsoleInput :: HANDLE
-                     -> Ptr INPUT_RECORD
-                     -> DWORD
-                     -> LPDWORD
-                     -> IO BOOL
 foreign import WINDOWS_CCONV unsafe "windows.h GetNumberOfConsoleInputEvents"
   cGetNumberOfConsoleInputEvents :: HANDLE -> Ptr DWORD -> IO BOOL
 foreign import WINDOWS_CCONV unsafe "windows.h ReadConsoleInputW"
@@ -340,93 +213,17 @@ throwIfFalse action = do
     -- is zero for some instructable reason (?)
     else return ()
 
-getConsoleScreenBufferInfo :: HANDLE -> IO CONSOLE_SCREEN_BUFFER_INFO
-getConsoleScreenBufferInfo handle
-  = alloca $ \ptr_console_screen_buffer_info -> do
-      throwIfFalse $
-        cGetConsoleScreenBufferInfo handle ptr_console_screen_buffer_info
-      peek ptr_console_screen_buffer_info
-
-getConsoleCursorInfo :: HANDLE -> IO CONSOLE_CURSOR_INFO
-getConsoleCursorInfo handle = alloca $ \ptr_console_cursor_info -> do
-  throwIfFalse $ cGetConsoleCursorInfo handle ptr_console_cursor_info
-  peek ptr_console_cursor_info
-
 getConsoleMode :: HANDLE -> IO DWORD
 getConsoleMode handle = alloca $ \ptr_mode -> do
   throwIfFalse $ cGetConsoleMode handle ptr_mode
   peek ptr_mode
 
-setConsoleTextAttribute :: HANDLE -> WORD -> IO ()
-setConsoleTextAttribute handle attributes
-  = throwIfFalse $ cSetConsoleTextAttribute handle attributes
-
-setConsoleCursorPosition :: HANDLE -> COORD -> IO ()
-setConsoleCursorPosition handle cursor_position
-  = throwIfFalse $ cSetConsoleCursorPosition handle
-      (unpackCOORD cursor_position)
-
-setConsoleCursorInfo :: HANDLE -> CONSOLE_CURSOR_INFO -> IO ()
-setConsoleCursorInfo handle console_cursor_info
-  = with console_cursor_info $ \ptr_console_cursor_info -> do
-      throwIfFalse $ cSetConsoleCursorInfo handle ptr_console_cursor_info
-
-setConsoleTitle :: LPCTSTR -> IO ()
-setConsoleTitle title = throwIfFalse $ cSetConsoleTitle title
-
 setConsoleMode :: HANDLE -> DWORD -> IO ()
 setConsoleMode handle attributes
   = throwIfFalse $ cSetConsoleMode handle attributes
 
-fillConsoleOutputAttribute :: HANDLE -> WORD -> DWORD -> COORD -> IO DWORD
-fillConsoleOutputAttribute handle attribute fill_length write_origin
-  = alloca $ \ptr_chars_written -> do
-      throwIfFalse $ cFillConsoleOutputAttribute handle attribute
-        fill_length (unpackCOORD write_origin) ptr_chars_written
-      peek ptr_chars_written
-
-fillConsoleOutputCharacter :: HANDLE -> TCHAR -> DWORD -> COORD -> IO DWORD
-fillConsoleOutputCharacter handle char fill_length write_origin
-  = alloca $ \ptr_chars_written -> do
-      throwIfFalse $ cFillConsoleOutputCharacter handle char fill_length
-        (unpackCOORD write_origin) ptr_chars_written
-      peek ptr_chars_written
-
-scrollConsoleScreenBuffer :: HANDLE
-                          -> SMALL_RECT
-                          -> Maybe SMALL_RECT
-                          -> COORD
-                          -> CHAR_INFO
-                          -> IO ()
-scrollConsoleScreenBuffer
-  handle scroll_rectangle mb_clip_rectangle destination_origin fill
-  = with scroll_rectangle $ \ptr_scroll_rectangle ->
-    maybeWith with mb_clip_rectangle $ \ptr_clip_rectangle ->
-    with fill $ \ptr_fill ->
-    throwIfFalse $ cScrollConsoleScreenBuffer handle ptr_scroll_rectangle
-      ptr_clip_rectangle (unpackCOORD destination_origin) ptr_fill
-
--- The following is based on module System.Win32.Console.Extra from package
--- Win32-console, cut down for the WCHAR version of writeConsoleInput.
-
-writeConsoleInput :: HANDLE -> [INPUT_RECORD] -> IO DWORD
-writeConsoleInput hdl evs
-  = writeConsoleInputWith hdl $ \act ->
-    withArrayLen evs $ \len ptr ->
-    act (ptr, toEnum len)
-
-writeConsoleInputWith :: HANDLE
-                      -> InputHandler (Ptr INPUT_RECORD, DWORD)
-                      -> IO DWORD
-writeConsoleInputWith hdl withBuffer
-  = returnWith_ $ \ptrN ->
-    withBuffer $ \(ptrBuf, len) ->
-    failIfFalse_ "WriteConsoleInputW" $ cWriteConsoleInput hdl ptrBuf len ptrN
-
 returnWith_ :: Storable a => (Ptr a -> IO b) -> IO a
 returnWith_ act = alloca $ \ptr -> act ptr >> peek ptr
-
-type InputHandler i = forall a. (i -> IO a) -> IO a
 
 {-
 typedef union _UNICODE_ASCII_CHAR {

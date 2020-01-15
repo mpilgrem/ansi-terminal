@@ -1,6 +1,12 @@
 Changes
 =======
 
+Version 1.0
+-----------
+
+* BREAKING CHANGE: Legacy Windows no longer supported. `withANSI` and
+  `withANSIh` ensure ANSI capability on all operating systems.
+
 Version 0.10.2
 --------------
 
