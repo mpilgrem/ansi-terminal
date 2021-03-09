@@ -83,7 +83,10 @@ variants, namely:
    output on the understanding that you will see colors only if you are running
    on a Unix-like operating system or a version of Windows where emulation has
    not been necessary. If the control characters are always required, see module
-   "System.Console.ANSI.Codes".
+   "System.Console.ANSI.Codes". For variants that have a (strict)
+   @Data.Text.Text@ type, see module "System.Console.ANSI.Codes.Text". For
+   variants that have a @Data.Text.Lazy.Builder.Builder@ type, see module
+   "System.Console.ANSI.Codes.Text.Lazy.Builder".
 
 Example:
 

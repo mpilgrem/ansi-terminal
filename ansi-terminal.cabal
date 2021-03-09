@@ -13,7 +13,8 @@ Maintainer:          Mike Pilgrem <public@pilgrem.com>, Roman Cheplyaka <roma@ro
 Homepage:            https://github.com/UnkindPartition/ansi-terminal
 Build-Type:          Simple
 
-Extra-Source-Files:     src/includes/Common-Include.hs
+Extra-Source-Files:     src/includes/Common-Exports-Codes.hs
+                        src/includes/Common-Include.hs
                         src/includes/Common-Include-Emulator.hs
                         src/includes/Common-Include-Enabled.hs
                         src/includes/Common-Safe-Haskell.hs
@@ -29,16 +30,29 @@ Flag Example
         Description:    Build the example application
         Default:        False
 
+-- The text-tests package depends on packages that themselves depend on
+-- ansi-terminal. The flag below allows circular dependencies to be avoided.
+Flag No-Text-Dependency
+        Description:    Disable dependency on text package
+        Default:        False
+
 Library
         Hs-Source-Dirs:         src
         Exposed-Modules:        System.Console.ANSI
                                 System.Console.ANSI.Types
                                 System.Console.ANSI.Codes
+        Other-Modules:          System.Console.ANSI.Codes.Internal
 
         Include-Dirs:           src/includes
 
         Build-Depends:          base >= 4.3.0.0 && < 5
                               , colour >=2.1.0
+
+        if !flag(no-text-dependency)
+                Exposed-Modules:        System.Console.ANSI.Codes.Text
+                                        System.Console.ANSI.Codes.Text.Lazy.Builder
+                Build-Depends:          text >= 0.11.1.0
+
         if os(windows)
                 Build-Depends:          containers >= 0.5.0.0
                                       , mintty

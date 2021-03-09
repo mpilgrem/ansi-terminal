@@ -22,6 +22,7 @@ The package also depends on:
 * `mintty` (which depends on `base >= 4.3`), used for its `isMinTTYHandle`
   function only in the Windows version of the package. The function was later
   added to `Win32-2.5.0.0` (first included with GHC 8.2.1 with `base-4.10.0.0`)
+* `text` (first included with GHC 8.4.1)
 
 The package achieves that backward compatibility by using C Pre-Processor (CPP)
 directives. The `CPP` GHC extension is specified for the library in
@@ -29,7 +30,8 @@ directives. The `CPP` GHC extension is specified for the library in
 `System.Win32.Compat` is used to reduce the use of CPP pragmas in other modules.
 
 Of particular note is that, before GHC 7.10.1 and `base-4.8.0.0`, `<$>` was not
-exported by the `Prelude`.
+exported by the `Prelude`; and, before GHC 8.4.1 and `base-4.11.0.0`, `<>` was
+not exported by the `Prelude`.
 
 CPP `#include` pragmas are also used to include code from files to limit code
 duplication in modules that are specific to the 'Unix' or Windows versions of
